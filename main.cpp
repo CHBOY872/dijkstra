@@ -2,7 +2,6 @@
 #include <vector>
 #include <list>
 #include <iostream>
-#include <stdio.h>
 
 struct Vertice;
 
