@@ -7,8 +7,8 @@ struct Vertice;
 
 struct Edge {
     Vertice* v;
-    int weight;
-    Edge(Vertice* v, int weight) : v(v), weight(weight) {}
+    unsigned int weight;
+    Edge(Vertice* v, unsigned int weight) : v(v), weight(weight) {}
 };
 
 struct Vertice {
@@ -17,7 +17,7 @@ struct Vertice {
     bool visited;
     Vertice* prev_v;
     std::list<Edge> edges;
-    Vertice(int idx = -1)
+    Vertice(unsigned int idx = -1)
         : idx(idx), length(-1), visited(false), prev_v(nullptr) {}
 };
 
@@ -136,7 +136,7 @@ int main()
     std::cin >> idx_from >> idx_to;
     auto x = d.Solve(idx_from, idx_to);
     for (auto& i : x)
-        std::cout << "IDX: " << i.idx << std::endl;
+        std::cout << i.idx << (&i == &x.back() ? "\n" : " -> ");
 
     return 0;
 }
