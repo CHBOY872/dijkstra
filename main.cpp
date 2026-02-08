@@ -43,6 +43,7 @@ public:
                 Vertice* v = GetVertice(idx_to);
                 if (v)
                     i.edges.push_back(Edge(v, weight));
+                return;
             }
         }
     }
