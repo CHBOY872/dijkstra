@@ -1,142 +1,314 @@
-#include <algorithm>
-#include <vector>
-#include <list>
-#include <iostream>
+#include <stdio.h>
 
-struct Vertice;
+class Edge;
 
-struct Edge {
-    Vertice* v;
-    unsigned int weight;
-    Edge(Vertice* v, unsigned int weight) : v(v), weight(weight) {}
-};
+class Vertice {
+    struct EdgeList {
+        Edge* e;
+        EdgeList* next;
+    };
+    int value;
+    int idx;
+    EdgeList* list;
+    Vertice* prev;
+    bool is_visited;
 
-struct Vertice {
-    unsigned int idx;
-    unsigned int length;
-    bool visited;
-    Vertice* prev_v;
-    std::list<Edge> edges;
-    Vertice(unsigned int idx = -1)
-        : idx(idx), length(-1), visited(false), prev_v(nullptr) {}
-};
-
-class Graph {
-    friend class DijkstraSolver;
-
-    std::list<Vertice> vertices;
-
-    Vertice* GetVertice(unsigned int idx)
-    {
-        for (auto& i : vertices) {
-            if (i.idx == idx)
-                return &i;
-        }
-        return nullptr;
-    }
 public:
-    Graph(std::list<Vertice>&& v) : vertices(std::move(v)) {}
-    void CreateEdge(unsigned int idx_from, unsigned int idx_to, int weight)
-    {
-        for (auto& i : vertices) {
-            if (i.idx == idx_from) {
-                Vertice* v = GetVertice(idx_to);
-                if (v)
-                    i.edges.push_back(Edge(v, weight));
-                return;
-            }
+    Vertice(int _idx = -1)
+        : value(-1), idx(_idx), list(0), prev(0), is_visited(false) {}
+    ~Vertice();
+
+    inline int GetIdx() const { return idx; }
+    inline int GetValue() const { return value; }
+    inline void SetValue(int _value) { value = _value; }
+    void AddEdge(Edge* e);
+    inline Vertice* GetPrevVertice() const { return prev; }
+    inline void SetPrevVertice(Vertice* _prev) { prev = _prev; }
+    inline bool IsVisited() const { return is_visited; }
+    void SetVisited(bool _is_visited) { is_visited = _is_visited; }
+    void Reset() { value = -1; prev = 0; is_visited = false; }
+
+    class EdgeListIterator {
+        EdgeList* l;
+    public:
+        EdgeListIterator(Vertice* v) : l(v->list) {}
+        Edge* Next()
+        {
+            if (!l)
+                return 0;
+            Edge* e = l->e;
+            l = l->next;
+            return e;
         }
+    };
+};
+
+Vertice::~Vertice()
+{
+    EdgeList* tmp = list;
+    while (list) {
+        list = tmp->next;
+        delete tmp;
+        tmp = list;
     }
+}
+
+void Vertice::AddEdge(Edge* e)
+{
+    EdgeList* tmp = new EdgeList;
+    tmp->e = e;
+    tmp->next = list;
+    list = tmp;
+}
+
+class Edge {
+    Vertice* to;
+    int weight;
+
+public:
+    Edge(Vertice* _to = 0, int _weight = -1) : to(_to), weight(_weight) {}
+    inline Vertice* GetVertice() { return to; }
+    inline int GetWeight() const { return weight; }
 };
 
 class DijkstraSolver {
-    Graph& g;
+    struct EdgeList {
+        Edge* e;
+        EdgeList* next;
+    };
+    struct VerticeList {
+        Vertice* v;
+        VerticeList* next;
+    };
+
+    EdgeList* edges;
+    VerticeList* vertices;
+    int vertices_size;
+
+    Vertice *from, *to;
+
+    bool solved;
+    int visited_count;
 
 public:
-    DijkstraSolver(Graph& g) : g(g) {}
-    std::list<Vertice> Solve(unsigned int from_idx, unsigned int to_idx);
+    DijkstraSolver()
+        : edges(0), vertices(0), vertices_size(0)
+        , from(0), to(0), solved(false), visited_count(0) {}
+    ~DijkstraSolver();
+    void Solve(int from_idx, int to_idx);
+    void AddVertice(int idx);
+    void AddEdge(int from_idx, int to_idx, int value);
+    void LogResult();
+    void Clear();
+
+private:
+    inline bool IsAllVisited() const
+        { return visited_count == vertices_size; }
+    Vertice* GetVertice(int idx);
+    Vertice* GetMinimumUnvisitedVertice();
 };
 
-std::list<Vertice> DijkstraSolver::Solve(unsigned int from_idx,
-                                         unsigned int to_idx)
+DijkstraSolver::~DijkstraSolver()
 {
-    auto start = g.GetVertice(from_idx);
-    if (!start)
-        return {};
-    start->length = 0;
-    std::list<Vertice> res;
+    EdgeList* tmp_e = edges;
+    VerticeList* tmp_v = vertices;
 
-    while (std::find_if(g.vertices.begin(), g.vertices.end(),
-        [](const Vertice& v) { return !v.visited; }) != g.vertices.end() &&
-        start->idx != to_idx) {
+    while (edges) {
+        edges = tmp_e->next;
+        delete tmp_e->e;
+        delete tmp_e;
+        tmp_e = edges;
+    }
 
-        start->visited = true;
+    while (vertices) {
+        vertices = tmp_v->next;
+        delete tmp_v->v;
+        delete tmp_v;
+        tmp_v = vertices;
+    }
+}
 
-        for (auto& i : start->edges) {
-            if (i.weight + start->length < i.v->length) {
-                i.v->length = i.weight + start->length;
-                i.v->prev_v = start;
-            }
-        }
+void DijkstraSolver::AddVertice(int idx)
+{
+    VerticeList* tmp = vertices;
 
-        auto x = std::min_element(g.vertices.begin(), g.vertices.end(),
-            [](const Vertice& a, const Vertice& b) {
-                if (a.visited != b.visited) return !a.visited;
-                return a.length < b.length;
-            });
-        if (x == g.vertices.end() || x->visited ||
-            x->length == (unsigned int)-1) {
-            start = nullptr;
+    while (tmp) {
+        if (tmp->v->GetIdx() == idx)
+            return;
+        tmp = tmp->next;
+    }
+
+    tmp = new VerticeList;
+    tmp->v = new Vertice(idx);
+    tmp->next = vertices;
+    vertices = tmp;
+    vertices_size++;
+}
+
+void DijkstraSolver::AddEdge(int from_idx, int to_idx, int value)
+{
+    VerticeList *tmp_v = vertices;
+    Vertice *from = 0, *to = 0;
+    Edge* e;
+    EdgeList* tmp_e;
+
+    while (tmp_v) {
+        if (tmp_v->v->GetIdx() == from_idx)
+            from = tmp_v->v;
+        if (tmp_v->v->GetIdx() == to_idx)
+            to = tmp_v->v;
+        if (from && to)
             break;
+        tmp_v = tmp_v->next;
+    }
+
+    if (!from || !to)
+        return;
+
+    e = new Edge(to, value);
+    from->AddEdge(e);
+    tmp_e = new EdgeList;
+    tmp_e->e = e;
+    tmp_e->next = edges;
+    edges = tmp_e;
+}
+
+Vertice* DijkstraSolver::GetVertice(int idx)
+{
+    VerticeList* tmp = vertices;
+
+    while (tmp) {
+        if (tmp->v->GetIdx() == idx)
+            return tmp->v;
+        tmp = tmp->next;
+    }
+
+    return 0;
+}
+
+Vertice* DijkstraSolver::GetMinimumUnvisitedVertice()
+{
+    VerticeList* tmp = vertices;
+    Vertice* res = 0;
+
+    while (tmp) {
+        if (tmp->v->IsVisited()) {
+            tmp = tmp->next;
+            continue;
         }
-        start = &(*x);
+
+        if (!res && tmp->v->GetValue() != -1) {
+            res = tmp->v;
+            tmp = tmp->next;
+            continue;
+        }
+
+        if (tmp->v->GetValue() != -1 && tmp->v->GetValue() < res->GetValue())
+            res = tmp->v;
+
+        tmp = tmp->next;
     }
 
-    if (!start)
-        start = g.GetVertice(to_idx);
-    
-    if (start->length == (unsigned int)-1)
-        return {};
-
-    while (start) {
-        res.push_front(*start);
-        start = start->prev_v;
-    }
- 
     return res;
+}
+
+void DijkstraSolver::Solve(int from_idx, int to_idx)
+{
+    int tmp_value = 0;
+    Vertice* tmp;
+    Edge* e;
+    from = GetVertice(from_idx);
+    to = GetVertice(to_idx);
+
+    if (!from || !to)
+        return;
+
+    tmp = from;
+    tmp->SetValue(0);
+
+    while (!IsAllVisited() && tmp && tmp != to ) {
+        tmp->SetVisited(true);
+        visited_count++;
+        Vertice::EdgeListIterator it(tmp);
+
+        while ((e = it.Next())) {
+            tmp_value = e->GetVertice()->GetValue();
+
+            if (tmp_value == -1 ||
+                tmp_value > e->GetWeight() + tmp->GetValue()) {
+                e->GetVertice()->SetValue(e->GetWeight() + tmp->GetValue());
+                e->GetVertice()->SetPrevVertice(tmp);
+            }
+
+        }
+
+        tmp = GetMinimumUnvisitedVertice();
+    }
+
+    if (!tmp)
+        return;
+
+    solved = true;
+}
+
+void DijkstraSolver::LogResult()
+{
+    if (!solved) {
+        fprintf(stderr, "No path\n");
+        return;
+    }
+
+    VerticeList* tmp_list_result = 0;
+    VerticeList* tmp_l;
+    Vertice* tmp = to;
+
+    while (tmp) {
+        tmp_l = new VerticeList;
+        tmp_l->v = tmp;
+        tmp_l->next = tmp_list_result;
+        tmp_list_result = tmp_l;
+        tmp = tmp->GetPrevVertice();
+    }
+
+    while (tmp_list_result) {
+        printf("%d%s", tmp_list_result->v->GetIdx(),
+            tmp_list_result->next ? " -> " : "\n");
+        tmp_l = tmp_list_result;
+        tmp_list_result = tmp_list_result->next;
+        delete tmp_l;
+    }
+}
+
+void DijkstraSolver::Clear()
+{
+    VerticeList* tmp = vertices;
+    while (tmp) {
+        tmp->v->Reset();
+        tmp = tmp->next;
+    }
 }
 
 int main()
 {
-    std::list<Vertice> vertices;
-    int idx_from, idx_to, weight;
-    int n;
+    DijkstraSolver s;
+    int i, n, idx, from, to, value;
 
-    std::cout << "Type number of vertices" << std::endl;
-    std::cin >> n;
-    std::cout << "Type vertices (idx)" << std::endl;
-    for (int i = 0; i < n; i++) {
-        std::cin >> idx_from;
-        vertices.push_back(Vertice(idx_from));
+    scanf("%d", &n);
+    for (i = 0; i < n; i++) {
+        scanf("%d", &idx);
+        s.AddVertice(idx);
     }
 
-    Graph g(std::move(vertices));
-
-    std::cout << "Type number of edges" << std::endl;
-    std::cin >> n;
-    std::cout << "Type edges (from idx, to idx, weight)" << std::endl;
-    for (int i = 0; i < n; i++) {
-        std::cin >> idx_from >> idx_to >> weight;
-        g.CreateEdge(idx_from, idx_to, weight);
+    scanf("%d", &n);
+    for (i = 0; i < n; i++) {
+        scanf("%d %d %d", &from, &to, &value);
+        s.AddEdge(from, to, value);
     }
 
-    DijkstraSolver d(g);
+    scanf("%d %d", &from, &to);
 
-    std::cout << "Type from to vertices which should be solved" << std::endl;
-    std::cin >> idx_from >> idx_to;
-    auto x = d.Solve(idx_from, idx_to);
-    for (auto& i : x)
-        std::cout << i.idx << (&i == &x.back() ? "\n" : " -> ");
-
+    s.Solve(from, to);
+    s.LogResult();
+    s.Clear();
     return 0;
 }
