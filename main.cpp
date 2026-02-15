@@ -1,142 +1,255 @@
-#include <algorithm>
+#include <stdio.h>
+#include <queue>
 #include <vector>
-#include <list>
-#include <iostream>
 
-struct Vertice;
+class Edge;
 
-struct Edge {
-    Vertice* v;
-    unsigned int weight;
-    Edge(Vertice* v, unsigned int weight) : v(v), weight(weight) {}
-};
+class Vertice {
+    int value;
+    int idx;
+    std::vector<Edge> edges;
+    Vertice* prev;
+    bool is_visited;
 
-struct Vertice {
-    unsigned int idx;
-    unsigned int length;
-    bool visited;
-    Vertice* prev_v;
-    std::list<Edge> edges;
-    Vertice(unsigned int idx = -1)
-        : idx(idx), length(-1), visited(false), prev_v(nullptr) {}
-};
-
-class Graph {
-    friend class DijkstraSolver;
-
-    std::list<Vertice> vertices;
-
-    Vertice* GetVertice(unsigned int idx)
-    {
-        for (auto& i : vertices) {
-            if (i.idx == idx)
-                return &i;
-        }
-        return nullptr;
-    }
 public:
-    Graph(std::list<Vertice>&& v) : vertices(std::move(v)) {}
-    void CreateEdge(unsigned int idx_from, unsigned int idx_to, int weight)
-    {
-        for (auto& i : vertices) {
-            if (i.idx == idx_from) {
-                Vertice* v = GetVertice(idx_to);
-                if (v)
-                    i.edges.push_back(Edge(v, weight));
-                return;
-            }
-        }
-    }
+    Vertice(int _idx = -1)
+        : value(-1), idx(_idx), prev(0), is_visited(false) {}
+    ~Vertice();
+    inline int GetIdx() const { return idx; }
+    inline int GetValue() const { return value; }
+    inline void SetValue(int _value) { value = _value; }
+    void AddEdge(Edge&& e);
+    inline Vertice* GetPrevVertice() const { return prev; }
+    inline void SetPrevVertice(Vertice* _prev) { prev = _prev; }
+    inline bool IsVisited() const { return is_visited; }
+    void SetVisited(bool _is_visited) { is_visited = _is_visited; }
+    void Reset() { value = -1; prev = 0; is_visited = false; }
+    inline std::vector<Edge>& GetEdges() { return edges; }
+};
+
+Vertice::~Vertice() {}
+
+void Vertice::AddEdge(Edge&& e)
+{
+    edges.push_back(std::move(e));
+}
+
+class Edge {
+    Vertice* to;
+    int weight;
+public:
+    Edge(Vertice* _to = 0, int _weight = -1) : to(_to), weight(_weight) {}
+    inline Vertice* GetVertice() { return to; }
+    int GetWeight() const { return weight; }
 };
 
 class DijkstraSolver {
-    Graph& g;
+    struct VerticeList {
+        Vertice* v;
+        VerticeList* next;
+    };
+
+    Vertice **vertices;
+    int vertices_size;
+    int max_idx;
+    Vertice *from, *to;
+    bool solved;
 
 public:
-    DijkstraSolver(Graph& g) : g(g) {}
-    std::list<Vertice> Solve(unsigned int from_idx, unsigned int to_idx);
+    DijkstraSolver(int _vertices_size)
+        : vertices(new Vertice*[_vertices_size])
+        , vertices_size(_vertices_size), max_idx(-1)
+        , from(0), to(0), solved(false)
+    {
+        int i;
+        for (i = 0; i < _vertices_size; i++)
+            vertices[i] = 0;
+    }
+    ~DijkstraSolver();
+    void Solve(int from_idx, int to_idx);
+    void AddVertice(int idx);
+    void AddEdge(int from_idx, int to_idx, int value);
+    void LogResult();
+    void Clear();
+
+private:
+    inline Vertice* GetVertice(int idx);
+    Vertice* GetMinimumUnvisitedVertice();
+    void Resize(int new_size);
 };
 
-std::list<Vertice> DijkstraSolver::Solve(unsigned int from_idx,
-                                         unsigned int to_idx)
+DijkstraSolver::~DijkstraSolver()
 {
-    auto start = g.GetVertice(from_idx);
-    if (!start)
-        return {};
-    start->length = 0;
-    std::list<Vertice> res;
+    int i;
 
-    while (std::find_if(g.vertices.begin(), g.vertices.end(),
-        [](const Vertice& v) { return !v.visited; }) != g.vertices.end() &&
-        start->idx != to_idx) {
+    for (i = 0; i <= max_idx; i++) {
+        if (vertices[i])
+            delete vertices[i];
+    }
+    delete[] vertices;
+}
 
-        start->visited = true;
+void DijkstraSolver::Resize(int new_size)
+{
+    int i;
+    Vertice **tmp_vertices = new Vertice*[new_size];
 
-        for (auto& i : start->edges) {
-            if (i.weight + start->length < i.v->length) {
-                i.v->length = i.weight + start->length;
-                i.v->prev_v = start;
+    for (i = 0; i < new_size; i++)
+        tmp_vertices[i] = i < vertices_size ? vertices[i] : 0;
+    delete[] vertices;
+    vertices = tmp_vertices;
+    vertices_size = new_size;
+}
+
+void DijkstraSolver::AddVertice(int idx)
+{
+    if (idx >= vertices_size)
+        Resize(idx * 2);
+    if (vertices[idx])
+        return;
+    Vertice* tmp = new Vertice(idx);
+    vertices[idx] = tmp;
+    if (idx > max_idx) max_idx = idx;
+}
+
+void DijkstraSolver::AddEdge(int from_idx, int to_idx, int value)
+{
+    Vertice *from = vertices[from_idx], *to = vertices[to_idx];
+
+    if (!from || !to)
+        return;
+
+    from->AddEdge(Edge(to, value));
+}
+
+Vertice* DijkstraSolver::GetVertice(int idx)
+{
+    return vertices[idx] ? vertices[idx] : 0;
+}
+
+Vertice* DijkstraSolver::GetMinimumUnvisitedVertice()
+{
+    int i;
+    Vertice* res = 0;
+
+    for (i = 0; i <= max_idx; i++) {
+        if (!vertices[i] || vertices[i]->IsVisited())
+            continue;
+        if (!res && vertices[i]->GetValue() != -1) {
+            res = vertices[i];
+            continue;
+        }
+        if (vertices[i]->GetValue() != -1 &&
+            vertices[i]->GetValue() < res->GetValue())
+            res = vertices[i];
+    }
+    return res;
+}
+
+void DijkstraSolver::Solve(int from_idx, int to_idx)
+{
+    from = GetVertice(from_idx);
+    to   = GetVertice(to_idx);
+    if (!from || !to) return;
+
+    using Node = std::pair<int, Vertice*>;
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+
+    from->SetValue(0);
+    pq.push({0, from});
+
+    while (!pq.empty()) {
+        auto [dist, u] = pq.top();
+        pq.pop();
+
+        if (!u) continue;
+        if (u->IsVisited()) continue;
+
+        if (u->GetValue() != dist) continue;
+
+        u->SetVisited(true);
+        if (u == to) { solved = true; return; }
+
+        for (auto &e : u->GetEdges()) {
+            Vertice* v = e.GetVertice();
+            if (!v || v->IsVisited()) continue;
+
+            int cur = v->GetValue();
+            int cand = dist + e.GetWeight();
+
+            if (cur == -1 || cand < cur) {
+                v->SetValue(cand);
+                v->SetPrevVertice(u);
+                pq.push({cand, v});
             }
         }
-
-        auto x = std::min_element(g.vertices.begin(), g.vertices.end(),
-            [](const Vertice& a, const Vertice& b) {
-                if (a.visited != b.visited) return !a.visited;
-                return a.length < b.length;
-            });
-        if (x == g.vertices.end() || x->visited ||
-            x->length == (unsigned int)-1) {
-            start = nullptr;
-            break;
-        }
-        start = &(*x);
     }
 
-    if (!start)
-        start = g.GetVertice(to_idx);
-    
-    if (start->length == (unsigned int)-1)
-        return {};
+    solved = false;
+}
 
-    while (start) {
-        res.push_front(*start);
-        start = start->prev_v;
+void DijkstraSolver::LogResult()
+{
+    if (!solved) {
+        fprintf(stderr, "No path\n");
+        return;
     }
- 
-    return res;
+
+    VerticeList* tmp_list_result = 0;
+    VerticeList* tmp_l;
+    Vertice* tmp = to;
+
+    while (tmp) {
+        tmp_l = new VerticeList;
+        tmp_l->v = tmp;
+        tmp_l->next = tmp_list_result;
+        tmp_list_result = tmp_l;
+        tmp = tmp->GetPrevVertice();
+    }
+
+    while (tmp_list_result) {
+        printf("%d%s", tmp_list_result->v->GetIdx(),
+            tmp_list_result->next ? " -> " : "\n");
+        tmp_l = tmp_list_result;
+        tmp_list_result = tmp_list_result->next;
+        delete tmp_l;
+    }
+}
+
+void DijkstraSolver::Clear()
+{
+    int i;
+    for (i = 0; i <= max_idx; i++) {
+        if (vertices[i])
+            vertices[i]->Reset();
+    }
+    from = 0;
+    to = 0;
+    solved = false;
 }
 
 int main()
 {
-    std::list<Vertice> vertices;
-    int idx_from, idx_to, weight;
-    int n;
+    DijkstraSolver* s;
+    int i, n, idx, from, to, value;
+    scanf("%d", &n);
 
-    std::cout << "Type number of vertices" << std::endl;
-    std::cin >> n;
-    std::cout << "Type vertices (idx)" << std::endl;
-    for (int i = 0; i < n; i++) {
-        std::cin >> idx_from;
-        vertices.push_back(Vertice(idx_from));
+    s = new DijkstraSolver(n+1);
+    for (i = 0; i < n; i++) {
+        scanf("%d", &idx); s->AddVertice(idx);
     }
 
-    Graph g(std::move(vertices));
-
-    std::cout << "Type number of edges" << std::endl;
-    std::cin >> n;
-    std::cout << "Type edges (from idx, to idx, weight)" << std::endl;
-    for (int i = 0; i < n; i++) {
-        std::cin >> idx_from >> idx_to >> weight;
-        g.CreateEdge(idx_from, idx_to, weight);
+    scanf("%d", &n);
+    for (i = 0; i < n; i++) {
+        scanf("%d %d %d", &from, &to, &value);
+        s->AddEdge(from, to, value);
     }
 
-    DijkstraSolver d(g);
+    scanf("%d %d", &from, &to);
 
-    std::cout << "Type from to vertices which should be solved" << std::endl;
-    std::cin >> idx_from >> idx_to;
-    auto x = d.Solve(idx_from, idx_to);
-    for (auto& i : x)
-        std::cout << i.idx << (&i == &x.back() ? "\n" : " -> ");
-
+    s->Solve(from, to);
+    s->LogResult();
+    s->Clear();
+    delete s;
     return 0;
 }
